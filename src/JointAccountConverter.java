@@ -1,11 +1,10 @@
 import java.io.File;
 import java.io.IOException;
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
-import org.jopendocument.dom.ODDocument;
-import org.jopendocument.dom.ODValueType;
 import org.jopendocument.dom.spreadsheet.Cell;
 import org.jopendocument.dom.spreadsheet.Sheet;
 import org.jopendocument.dom.spreadsheet.SpreadSheet;
@@ -14,7 +13,10 @@ public class JointAccountConverter {
 
     JointAccountConverter() throws IOException {
         Map<String, Integer> foundCoordinates = new HashMap<String, Integer>();
-        Map<String, Double> sumOverviewDetails = new HashMap<String, Double>();
+        Map<String, String> sumOverviewDetails = new HashMap<String, String>();
+        // for the Column Position we need when determine from Formula Values
+        String alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+
         /*
          * neet to know
          * getCellAt(column, row) !!!
@@ -87,9 +89,17 @@ public class JointAccountConverter {
         /// | sum-  | -202,3 | -603
         /// | sum+  | 50     | 160
 
+        Map<String, String> sumOverviewDetails = new HashMap<String, String>();
         int startColumn = foundCoordinates.get("column");
         int startRow = foundCoordinates.get("row");
 
+        // get the Value Formula
+        sumOverviewDetails.put("planned-",actualSheet.getCellAt(startColumn + 1, startRow).getFormula());
+        sumOverviewDetails.put("planned+",actualSheet.getCellAt(startColumn + 1, startRow + 1).getFormula());
+        sumOverviewDetails.put("unplanned-",actualSheet.getCellAt(startColumn + 2, startRow).getFormula());
+        sumOverviewDetails.put("unplanned+",actualSheet.getCellAt(startColumn + 2, startRow + 1).getFormula());
+
+        return sumOverviewDetails;
 
     }
 }
