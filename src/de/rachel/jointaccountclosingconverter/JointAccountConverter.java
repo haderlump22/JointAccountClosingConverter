@@ -43,12 +43,13 @@ public class JointAccountConverter {
                 Sheet actualSheet = spreadSheet.getSheet(i);
                 System.out.println(actualSheet.getName());
                 findFirstCell(actualSheet);
+                System.out.println(foundCoordinates);
                 collectSumOverviewDetails(actualSheet);
+                System.out.println(sumOverviewDetails);
 
                 // {unplanned+==[.D3], planned-==[.D5]+[.D6]+[.D9], unplanned-==[.D4]+[.D2], planned+==[.D10]+[.D11]}
 
                 for (String sumType : sumOverviewDetails.keySet()) {
-                    System.out.println(sumOverviewDetails.get(sumType));
                     generateClosingSumRowValues(actualSheet, sumType, sumOverviewDetails.get(sumType));
                 }
 
@@ -113,14 +114,30 @@ public class JointAccountConverter {
         int startRow = foundCoordinates.get("row");
 
         // get the Value Formula if the Value not equal 0
-        if (Float.valueOf(actualSheet.getCellAt(startColumn + 1, startRow).getValue().toString()) != 0)
+        if (Float.valueOf(actualSheet.getCellAt(startColumn + 1, startRow).getValue().toString()) != 0) {
             sumOverviewDetails.put("planned-",actualSheet.getCellAt(startColumn + 1, startRow).getFormula());
-        if (Float.valueOf(actualSheet.getCellAt(startColumn + 1, startRow + 1).getValue().toString()) != 0)
+        } else {
+            sumOverviewDetails.remove("planned-");
+        }
+
+        if (Float.valueOf(actualSheet.getCellAt(startColumn + 1, startRow + 1).getValue().toString()) != 0){
             sumOverviewDetails.put("planned+",actualSheet.getCellAt(startColumn + 1, startRow + 1).getFormula());
-        if (Float.valueOf(actualSheet.getCellAt(startColumn + 2, startRow).getValue().toString()) != 0)
+        } else {
+            sumOverviewDetails.remove("planned+");
+        }
+
+        if (Float.valueOf(actualSheet.getCellAt(startColumn + 2, startRow).getValue().toString()) != 0){
             sumOverviewDetails.put("unplanned-",actualSheet.getCellAt(startColumn + 2, startRow).getFormula());
-        if (Float.valueOf(actualSheet.getCellAt(startColumn + 2, startRow + 1).getValue().toString()) != 0)
+        } else {
+            sumOverviewDetails.remove("unplanned-");
+        }
+
+        if (Float.valueOf(actualSheet.getCellAt(startColumn + 2, startRow + 1).getValue().toString()) != 0){
             sumOverviewDetails.put("unplanned+",actualSheet.getCellAt(startColumn + 2, startRow + 1).getFormula());
+        } else {
+            sumOverviewDetails.remove("unplanned+");
+        }
+
     }
 
     private void generateClosingSumRowValues(Sheet actualSheet, String sumType, String formula) {
@@ -132,6 +149,7 @@ public class JointAccountConverter {
             String[] cellIds = toSplit.split("\\+");
 
             for (String cellId : cellIds) {
+                System.out.println("CellIdToGenerateId: " + cellId);
                 closingSumRowValues.add(new closingSumRowValues(sumType, Integer.valueOf(actualSheet
                         .getCellAt(alphabet.indexOf(cellId.charAt(0)) + 1, Integer.valueOf(cellId.substring(1)) - 1)
                         .getValue().toString())));
@@ -139,6 +157,7 @@ public class JointAccountConverter {
 
         } else {
             String cellId = formula.replaceAll("=|\\[\\.|\\]", "");
+            System.out.println("CellIdToGenerateId: " + cellId);
             closingSumRowValues.add(new closingSumRowValues(sumType, Integer.valueOf(actualSheet
                         .getCellAt(alphabet.indexOf(cellId.charAt(0)) + 1, Integer.valueOf(cellId.substring(1)) - 1)
                         .getValue().toString())));
