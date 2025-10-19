@@ -24,7 +24,8 @@ public class JointAccountConverter {
         private List<closingSumRowValues> closingSumRowValues = new ArrayList<>();
         // for the Column Position we need when determine from Formula Values
         private String alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
-        StringBuilder contentBuffer = new StringBuilder();
+        private StringBuilder contentBuffer = new StringBuilder();
+        private int idForClosingDetailTable = 0;
 
     JointAccountConverter() throws IOException {
         /*
@@ -42,6 +43,7 @@ public class JointAccountConverter {
             if (spreadSheet.getSheet(i).getName().startsWith("Pivot")) {
                 Sheet actualSheet = spreadSheet.getSheet(i);
                 System.out.println(actualSheet.getName());
+                createIdsForAccountClosingDetails(actualSheet, spreadSheet);
                 findFirstCell(actualSheet);
                 System.out.println(foundCoordinates);
                 collectSumOverviewDetails(actualSheet);
@@ -56,25 +58,28 @@ public class JointAccountConverter {
                 for (closingSumRowValues dataRow : closingSumRowValues) {
                     contentBuffer.append("('" + dataRow.sumType + "', "+ dataRow.idOfSummand +"),\n");
                 }
-
             };
         }
 
+        // System.out.println(contentBuffer);
+        // save all changes
+        // spreadSheet.saveAs(file);
+
+        // // remove all from the last commata to the end of content
+        // contentBuffer = contentBuffer.delete(contentBuffer.length() - 2, contentBuffer.length());
+
+        // Files.writeString(Paths.get(outputFile), contentBuffer, StandardCharsets.UTF_8);
 
 
-        // remove all from the last commata to the end of content
-        contentBuffer = contentBuffer.delete(contentBuffer.length() - 2, contentBuffer.length());
 
-        Files.writeString(Paths.get(outputFile), contentBuffer, StandardCharsets.UTF_8);
+        // Sheet actualSheet = spreadSheet.getSheet(3);
+        // if (!actualSheet.getCellAt("E1").getValue().equals("")){
+        //     System.out.println("nich leer");
+        // } else {
+        //     System.out.println("leer");
+        // }
 
-
-
-        // System.out.println(actualSheet.getCellAt(6,5).get);
-
-        // System.out.println(foundCell.);
-
-//         System.out.println(actualSheet.getName());
-// //
+        // spreadSheet.saveAs(file);
 
     }
     public static void main(String[] args) throws Exception {
@@ -144,17 +149,28 @@ public class JointAccountConverter {
 
         // first we neet to split the formula that looks like this => "=[.D3]" or like
         // this => "=[.D5]+[.D6]+[.D9]"
-        if (formula.contains("+")) {
-            String toSplit = formula.replaceAll("=|\\[\\.|\\]", "");
-            String[] cellIds = toSplit.split("\\+");
+        if (formula.contains("+") || formula.contains("=SUM")) {
+            if (formula.startsWith("=SUM")) {
+                String toSplit = formula.replaceAll("=SUM|\\(|\\[|\\.|\\]|\\)", "");
+                String[] cellIds = toSplit.split("\\;");
 
-            for (String cellId : cellIds) {
-                System.out.println("CellIdToGenerateId: " + cellId);
-                closingSumRowValues.add(new closingSumRowValues(sumType, Integer.valueOf(actualSheet
-                        .getCellAt(alphabet.indexOf(cellId.charAt(0)) + 1, Integer.valueOf(cellId.substring(1)) - 1)
-                        .getValue().toString())));
+                for (String cellId : cellIds) {
+                    System.out.println("CellIdToGenerateId: " + cellId);
+                    closingSumRowValues.add(new closingSumRowValues(sumType, Integer.valueOf(actualSheet
+                            .getCellAt(alphabet.indexOf(cellId.charAt(0)) + 1, Integer.valueOf(cellId.substring(1)) - 1)
+                            .getValue().toString())));
+                }
+            } else {
+                String toSplit = formula.replaceAll("=|\\[\\.|\\]", "");
+                String[] cellIds = toSplit.split("\\+");
+
+                for (String cellId : cellIds) {
+                    System.out.println("CellIdToGenerateId: " + cellId);
+                    closingSumRowValues.add(new closingSumRowValues(sumType, Integer.valueOf(actualSheet
+                            .getCellAt(alphabet.indexOf(cellId.charAt(0)) + 1, Integer.valueOf(cellId.substring(1)) - 1)
+                            .getValue().toString())));
+                }
             }
-
         } else {
             String cellId = formula.replaceAll("=|\\[\\.|\\]", "");
             System.out.println("CellIdToGenerateId: " + cellId);
@@ -162,5 +178,22 @@ public class JointAccountConverter {
                         .getCellAt(alphabet.indexOf(cellId.charAt(0)) + 1, Integer.valueOf(cellId.substring(1)) - 1)
                         .getValue().toString())));
         }
+    }
+
+    private void createIdsForAccountClosingDetails(Sheet actualSheet, SpreadSheet spreadSheet) {
+        // we start only if there are nothin in E1
+        if (actualSheet.getCellAt("E1").getValue().equals("")){
+            actualSheet.getCellAt("E1").setValue("ID");
+            int i = 1;
+            while (!actualSheet.getCellAt(0, i).getValue().equals("Gesamt Ergebnis")) {
+                actualSheet.getCellAt(4, i).setValue(idForClosingDetailTable);
+                idForClosingDetailTable++;
+                i++;
+            }
+        } else {
+            System.err.println("Fehler... ID Feld in Zelle E1 in Sheet "+ actualSheet.getName() + " kann nicht gesetzt werden, schon ein Wert vorhanden!");
+            System.exit(1);
+        }
+
     }
 }
