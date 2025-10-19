@@ -6,6 +6,7 @@ import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Paths;
+import java.sql.Date;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -18,14 +19,22 @@ import org.jopendocument.dom.spreadsheet.Sheet;
 import org.jopendocument.dom.spreadsheet.SpreadSheet;
 
 public class JointAccountConverter {
-        private Map<String, Integer> foundCoordinates = new HashMap<String, Integer>();
-        private Map<String, String> sumOverviewDetails = new HashMap<String, String>();
-        private record closingSumRowValues(String sumType, Integer idOfSummand) {};
-        private List<closingSumRowValues> closingSumRowValues = new ArrayList<>();
-        // for the Column Position we need when determine from Formula Values
-        private String alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
-        private StringBuilder contentBuffer = new StringBuilder();
-        private int idForClosingDetailTable = 0;
+    private Map<String, Integer> foundCoordinates = new HashMap<String, Integer>();
+    private Map<String, String> sumOverviewDetails = new HashMap<String, String>();
+
+    private record closingSumRowValues(String sumType, Integer idOfSummand) {
+    };
+
+    private record closingDetailTableData(Integer abschlussDetailId, String kategorieBezeichnung,
+            Float summeBetraege, Float planBetrag, Float differenz, String abschlussMonat, String bemerkung) {
+    };
+
+    private List<closingSumRowValues> closingSumRowValues = new ArrayList<>();
+    private List<closingDetailTableData> closingDetailTableData = new ArrayList<>();
+    // for the Column Position we need when determine from Formula Values
+    private String alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+    private StringBuilder contentBuffer = new StringBuilder();
+    private int idForClosingDetailTable = 0;
 
     JointAccountConverter() throws IOException {
         /*
@@ -43,7 +52,14 @@ public class JointAccountConverter {
             if (spreadSheet.getSheet(i).getName().startsWith("Pivot")) {
                 Sheet actualSheet = spreadSheet.getSheet(i);
                 // System.out.println(actualSheet.getName());
+
+                // create IDs for detailTable and Sum Values Data that need them
                 createIdsForAccountClosingDetails(actualSheet, spreadSheet);
+
+                // block for Creating data for the Accountclosingdetail Table for Import
+                collectDetailTableData(actualSheet);
+
+                // Block for creating closingSum Data for Import
                 findFirstCell(actualSheet);
                 // System.out.println(foundCoordinates);
                 collectSumOverviewDetails(actualSheet);
@@ -53,6 +69,7 @@ public class JointAccountConverter {
                     generateClosingSumRowValues(actualSheet, sumType, sumOverviewDetails.get(sumType));
                 }
 
+                // Block for creating Content for Import Files
                 for (closingSumRowValues dataRow : closingSumRowValues) {
                     contentBuffer.append("('" + dataRow.sumType + "', "+ dataRow.idOfSummand +"),\n");
                 }
@@ -79,6 +96,38 @@ public class JointAccountConverter {
 
         // spreadSheet.saveAs(file);
 
+    }
+    private void collectDetailTableData(Sheet actualSheet) {
+        // run reading Information from Cell A1 to E<last Line before in Column A value is "Gesamt ergebnis">
+        Integer abschlussDetailId;
+        String kategorieBezeichnung;
+        Float summeBetraege;
+        Float planBetrag;
+        Float differenz;
+        String abschlussMonat;
+        String bemerkung;
+
+        abschlussMonat = "01." + actualSheet.getName().replaceAll("Pivot-Tabelle_|_\\d{1,2}", "").replace("-", ".")
+
+        if (actualSheet.getCellAt("A1").getValue().equals("Art")){
+            // we start in Row 2 (base that first row has index 0)
+            int i = 1;
+            while (!actualSheet.getCellAt(0, i).getValue().equals("Gesamt Ergebnis")) {
+                abschlussDetailId = actualSheet.getCellAt(4, i).getValue();
+                kategorieBezeichnung = actualSheet.getCellAt(0, i).getValue();
+                summeBetraege = actualSheet.getCellAt(1 , i).getValue();
+                planBetrag = actualSheet.getCellAt(2, i).getValue();
+                differenz = actualSheet.getCellAt(3, i).getValue();
+                bemerkung = actualSheet.getCellAt(4, i).getValue();
+
+                closingDetailTableData.add(new closingDetailTableData(null, alphabet, null, null, null, null, alphabet))
+
+                i++;
+            }
+        } else {
+            System.err.println("Fehler... ID Feld in Zelle E1 in Sheet "+ actualSheet.getName() + " kann nicht gesetzt werden, schon ein Wert vorhanden!");
+            System.exit(1);
+        }
     }
     public static void main(String[] args) throws Exception {
         new JointAccountConverter();
