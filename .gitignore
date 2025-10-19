@@ -1,4 +1,5 @@
-Aufstellungen2017.ods
+*.ods
+*lock*ods#*
 lib/jOpenDocument-1.5.jar
 bin/
 .vscode/

@@ -42,14 +42,12 @@ public class JointAccountConverter {
         for (int i = 0; i < anzahl; i++) {
             if (spreadSheet.getSheet(i).getName().startsWith("Pivot")) {
                 Sheet actualSheet = spreadSheet.getSheet(i);
-                System.out.println(actualSheet.getName());
+                // System.out.println(actualSheet.getName());
                 createIdsForAccountClosingDetails(actualSheet, spreadSheet);
                 findFirstCell(actualSheet);
-                System.out.println(foundCoordinates);
+                // System.out.println(foundCoordinates);
                 collectSumOverviewDetails(actualSheet);
-                System.out.println(sumOverviewDetails);
-
-                // {unplanned+==[.D3], planned-==[.D5]+[.D6]+[.D9], unplanned-==[.D4]+[.D2], planned+==[.D10]+[.D11]}
+                // System.out.println(sumOverviewDetails);
 
                 for (String sumType : sumOverviewDetails.keySet()) {
                     generateClosingSumRowValues(actualSheet, sumType, sumOverviewDetails.get(sumType));
@@ -63,12 +61,12 @@ public class JointAccountConverter {
 
         // System.out.println(contentBuffer);
         // save all changes
-        // spreadSheet.saveAs(file);
+        spreadSheet.saveAs(file);
 
-        // // remove all from the last commata to the end of content
-        // contentBuffer = contentBuffer.delete(contentBuffer.length() - 2, contentBuffer.length());
+        // remove all from the last commata to the end of content
+        contentBuffer = contentBuffer.delete(contentBuffer.length() - 2, contentBuffer.length());
 
-        // Files.writeString(Paths.get(outputFile), contentBuffer, StandardCharsets.UTF_8);
+        Files.writeString(Paths.get(outputFile), contentBuffer, StandardCharsets.UTF_8);
 
 
 
@@ -155,7 +153,7 @@ public class JointAccountConverter {
                 String[] cellIds = toSplit.split("\\;");
 
                 for (String cellId : cellIds) {
-                    System.out.println("CellIdToGenerateId: " + cellId);
+                    // System.out.println("CellIdToGenerateId: " + cellId);
                     closingSumRowValues.add(new closingSumRowValues(sumType, Integer.valueOf(actualSheet
                             .getCellAt(alphabet.indexOf(cellId.charAt(0)) + 1, Integer.valueOf(cellId.substring(1)) - 1)
                             .getValue().toString())));
@@ -165,7 +163,7 @@ public class JointAccountConverter {
                 String[] cellIds = toSplit.split("\\+");
 
                 for (String cellId : cellIds) {
-                    System.out.println("CellIdToGenerateId: " + cellId);
+                    // System.out.println("CellIdToGenerateId: " + cellId);
                     closingSumRowValues.add(new closingSumRowValues(sumType, Integer.valueOf(actualSheet
                             .getCellAt(alphabet.indexOf(cellId.charAt(0)) + 1, Integer.valueOf(cellId.substring(1)) - 1)
                             .getValue().toString())));
@@ -173,7 +171,7 @@ public class JointAccountConverter {
             }
         } else {
             String cellId = formula.replaceAll("=|\\[\\.|\\]", "");
-            System.out.println("CellIdToGenerateId: " + cellId);
+            // System.out.println("CellIdToGenerateId: " + cellId);
             closingSumRowValues.add(new closingSumRowValues(sumType, Integer.valueOf(actualSheet
                         .getCellAt(alphabet.indexOf(cellId.charAt(0)) + 1, Integer.valueOf(cellId.substring(1)) - 1)
                         .getValue().toString())));
@@ -191,8 +189,11 @@ public class JointAccountConverter {
                 i++;
             }
         } else {
-            System.err.println("Fehler... ID Feld in Zelle E1 in Sheet "+ actualSheet.getName() + " kann nicht gesetzt werden, schon ein Wert vorhanden!");
-            System.exit(1);
+            // We assume that only "ID" means that everything is prepared
+            if (!actualSheet.getCellAt("E1").getValue().equals("ID")) {
+                System.err.println("Fehler... ID Feld in Zelle E1 in Sheet "+ actualSheet.getName() + " kann nicht gesetzt werden, schon ein Wert vorhanden!");
+                System.exit(1);
+            }
         }
 
     }
