@@ -2,17 +2,14 @@ package de.rachel.jointaccountclosingconverter;
 
 import java.io.File;
 import java.io.IOException;
-import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Paths;
-import java.sql.Date;
+import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 import org.jopendocument.dom.spreadsheet.Cell;
 import org.jopendocument.dom.spreadsheet.Sheet;
@@ -32,64 +29,88 @@ public class JointAccountConverter {
     private List<closingSumRowValues> closingSumRowValues = new ArrayList<>();
     private List<closingDetailTableData> closingDetailTableData = new ArrayList<>();
     // for the Column Position we need when determine from Formula Values
-    private String alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
-    private StringBuilder contentBuffer = new StringBuilder();
+    private StringBuilder contentBufferAbschlusssummen = new StringBuilder();
+    private StringBuilder contentBufferAbschlussDetails = new StringBuilder();
     private int idForClosingDetailTable = 0;
 
     JointAccountConverter() throws IOException {
-        File file = new File("Aufstellungen2017.ods");
-        String outputFile = "ha_abschlusssummen.txt";
+        String[] year = {"2017", "2018", "2019", "2020", "2021", "2022", "2023", "2024"};
+        // String[] year = {"2017"};
+        String outputFileHaSummen = "ha_abschlusssummen.txt";
         String outputFileHaDetails = "ha_abschlussdetails.txt";
-        SpreadSheet spreadSheet;
-        spreadSheet = SpreadSheet.createFromFile(file);
 
-        int anzahl = spreadSheet.getSheetCount();
-        for (int i = 0; i < anzahl; i++) {
-            if (spreadSheet.getSheet(i).getName().startsWith("Pivot")) {
-                Sheet actualSheet = spreadSheet.getSheet(i);
-                 System.out.println(actualSheet.getName());
+        for (String actualYear : year) {
+            File file = new File("Aufstellungen" + actualYear + ".ods");
+            SpreadSheet spreadSheet = SpreadSheet.createFromFile(file);
 
-                // create IDs for detailTable and Sum Values Data that need them
-                createIdsForAccountClosingDetails(actualSheet);
+            int anzahl = spreadSheet.getSheetCount();
+            for (int i = 0; i < anzahl; i++) {
+                if (spreadSheet.getSheet(i).getName().startsWith("Pivot")) {
+                    Sheet actualSheet = spreadSheet.getSheet(i);
+                    // if (spreadSheet.getSheet(i).getName().startsWith("Pivot-Tabelle_06-2018")) {
+                    //     System.out.println("Breackpoint");
+                    // }
+                    System.out.println("processing: " + actualSheet.getName());
 
-                // block for Creating data for the Accountclosingdetail Table for Import
-                collectDetailTableData(actualSheet);
+                    // create IDs for detailTable and Sum Values Data that need them
+                    System.out.println("...create IDs");
+                    createIdsForAccountClosingDetails(actualSheet);
 
-                // Block for creating closingSum Data for Import
-                findFirstCellOfSumArea(actualSheet);
-                collectSumOverviewDetails(actualSheet);
+                    // block for Creating data for the Accountclosingdetail Table for Import
+                    System.out.println("...collect Detail Data");
+                    collectDetailTableData(actualSheet);
+
+                    // Block for creating closingSum Data for Import
+                    System.out.println("...find SumOverview Block");
+                    findFirstCellOfSumArea(actualSheet);
+                    System.out.println("...collect SumOverview Details");
+                    collectSumOverviewDetails(actualSheet);
+
+                    System.out.println("...create SumOverview DataRows");
+                    for (String sumType : sumOverviewDetails.keySet()) {
+                        generateClosingSumRowValues(actualSheet, sumType, sumOverviewDetails.get(sumType));
+                    }
+
+                    // Block for creating Content for Import Files
+                    System.out.println("...create SumOverview Import Data");
+                    for (closingSumRowValues dataRow : closingSumRowValues) {
+                        contentBufferAbschlusssummen.append("('" + dataRow.sumType + "', "+ dataRow.idOfSummand +"),\n");
+                    }
+
+                    System.out.println("...create Closingdetail Import Data");
+                    for (closingDetailTableData dataRow : closingDetailTableData) {
+                        contentBufferAbschlussDetails.append("(" + dataRow.abschlussDetailId +", '"+ dataRow.kategorieBezeichnung + "', " + dataRow.summeBetraege
+                                        + ", " + dataRow.planBetrag + ", " + dataRow.differenz + ", '" + dataRow.abschlussMonat + "'', '" + dataRow.bemerkung + "'),\n");
+                    }
+
+                };
+            }
+
+            // save all changes
+            System.out.println("...save change ods File");
+            spreadSheet.saveAs(file);
+            System.out.println("LetzteID für die Summen des Jahres (" + actualYear + "): " + idForClosingDetailTable);
 
 
-                for (String sumType : sumOverviewDetails.keySet()) {
-                    generateClosingSumRowValues(actualSheet, sumType, sumOverviewDetails.get(sumType));
-                }
 
-                // Block for creating Content for Import Files
-                for (closingSumRowValues dataRow : closingSumRowValues) {
-                    contentBuffer.append("('" + dataRow.sumType + "', "+ dataRow.idOfSummand +"),\n");
-                }
-            };
+            // Sheet actualSheet = spreadSheet.getSheet(3);
+            // if (!actualSheet.getCellAt("E1").getValue().equals("")){
+            //     System.out.println("nich leer");
+            // } else {
+            //     System.out.println("leer");
+            // }
+
+            // spreadSheet.saveAs(file);
         }
 
-        // save all changes
-        spreadSheet.saveAs(file);
+        // remove all from the last commata to the end of content and write it to Importfile
+        System.out.println("...write SumOverview Data to Importfile");
+        contentBufferAbschlusssummen = contentBufferAbschlusssummen.delete(contentBufferAbschlusssummen.length() - 2, contentBufferAbschlusssummen.length());
+        Files.writeString(Paths.get(outputFileHaSummen), contentBufferAbschlusssummen, StandardCharsets.UTF_8, StandardOpenOption.WRITE);
 
-        // remove all from the last commata to the end of content
-        contentBuffer = contentBuffer.delete(contentBuffer.length() - 2, contentBuffer.length());
-
-        Files.writeString(Paths.get(outputFile), contentBuffer, StandardCharsets.UTF_8);
-
-
-
-        // Sheet actualSheet = spreadSheet.getSheet(3);
-        // if (!actualSheet.getCellAt("E1").getValue().equals("")){
-        //     System.out.println("nich leer");
-        // } else {
-        //     System.out.println("leer");
-        // }
-
-        // spreadSheet.saveAs(file);
-
+        System.out.println("...write Closingdetail Data to Importfile");
+        contentBufferAbschlussDetails = contentBufferAbschlussDetails.delete(contentBufferAbschlussDetails.length() - 2, contentBufferAbschlussDetails.length());
+        Files.writeString(Paths.get(outputFileHaDetails), contentBufferAbschlussDetails, StandardCharsets.UTF_8, StandardOpenOption.WRITE);
     }
 
     private void collectDetailTableData(Sheet actualSheet) {
@@ -97,24 +118,55 @@ public class JointAccountConverter {
         // is "Gesamt ergebnis">
         Integer abschlussDetailId;
         String kategorieBezeichnung;
-        Float summeBetraege;
-        Float planBetrag;
-        Float differenz;
+        Float summeBetraege = 0.0f;
+        Float planBetrag = 0.0f;
+        Float differenz = 0.0f;
         String abschlussMonat;
-        String bemerkung;
+        String bemerkung = "";
 
         abschlussMonat = "01." + actualSheet.getName().replaceAll("Pivot-Tabelle_|_\\d{1,2}", "").replace("-", ".");
 
         if (actualSheet.getCellAt("A1").getValue().equals("Art")) {
             // we start in Row 2 (base that first row has index 0)
             int i = 1;
-            while (!actualSheet.getCellAt(0, i).getValue().equals("Gesamt Ergebnis")) {
-                abschlussDetailId = Integer.valueOf(actualSheet.getCellAt(19, i).getValue().toString());
-                kategorieBezeichnung = actualSheet.getCellAt(0, i).getValue().toString();
-                summeBetraege = Float.valueOf(actualSheet.getCellAt(1, i).getValue().toString());
-                planBetrag = Float.valueOf(actualSheet.getCellAt(2, i).getValue().toString());
-                differenz = Float.valueOf(actualSheet.getCellAt(3, i).getValue().toString());
-                bemerkung = actualSheet.getCellAt(4, i).getValue().toString();
+            while (!actualSheet.getImmutableCellAt(0, i).getValue().equals("Gesamt Ergebnis")
+                    && !actualSheet.getImmutableCellAt(0, i).getValue().equals("Summe Ergebnis")) {
+                abschlussDetailId = Integer.valueOf(actualSheet.getImmutableCellAt(19, i).getValue().toString());
+                kategorieBezeichnung = actualSheet.getImmutableCellAt(0, i).getValue().toString();
+                if (!actualSheet.getImmutableCellAt(1, i).getValue().toString().isEmpty()) {
+                    try {
+                        summeBetraege = Float.valueOf(actualSheet.getImmutableCellAt(1, i).getValue().toString());
+                    } catch (NumberFormatException e) {
+                        System.out.println(e.getMessage());
+                    }
+                }
+
+                if (!actualSheet.getImmutableCellAt(2, i).getValue().toString().isEmpty()) {
+                    try {
+                        planBetrag = Float.valueOf(actualSheet.getImmutableCellAt(2, i).getValue().toString());
+                    } catch (NumberFormatException e) {
+                        if (actualSheet.getImmutableCellAt(2, i).getValue().toString().matches("[ a-zA-Z0-9]*")) {
+                            bemerkung = actualSheet.getImmutableCellAt(2, i).getValue().toString();
+                        } else {
+                            System.out.println(e.getMessage());
+                        }
+                    }
+                }
+
+                if (!actualSheet.getImmutableCellAt(3, i).getValue().toString().isEmpty()) {
+                    try {
+                        differenz = Float.valueOf(actualSheet.getImmutableCellAt(3, i).getValue().toString());
+                    } catch (NumberFormatException e) {
+                        System.out.println(e.getMessage());
+                    }
+                }
+
+                // if value is not set before in the getting area for decimal Values
+                // so we set it at this point with the Values where we expected the comment
+                // for the detail Value
+                if (bemerkung.isEmpty()) {
+                    bemerkung = actualSheet.getImmutableCellAt(4, i).getValue().toString();
+                }
 
                 closingDetailTableData.add(new closingDetailTableData(abschlussDetailId, kategorieBezeichnung,
                         summeBetraege, planBetrag, differenz, abschlussMonat, bemerkung));
@@ -167,30 +219,29 @@ public class JointAccountConverter {
         int startRow = foundCoordinates.get("row");
 
         // get the Value Formula if the Value not equal 0
-        if (Float.valueOf(actualSheet.getCellAt(startColumn + 1, startRow).getValue().toString()) != 0) {
-            sumOverviewDetails.put("planned-",actualSheet.getCellAt(startColumn + 1, startRow).getFormula());
+        if (Float.valueOf(actualSheet.getImmutableCellAt(startColumn + 1, startRow).getValue().toString()) != 0) {
+            sumOverviewDetails.put("planned-",actualSheet.getImmutableCellAt(startColumn + 1, startRow).getFormula());
         } else {
             sumOverviewDetails.remove("planned-");
         }
 
-        if (Float.valueOf(actualSheet.getCellAt(startColumn + 1, startRow + 1).getValue().toString()) != 0){
-            sumOverviewDetails.put("planned+",actualSheet.getCellAt(startColumn + 1, startRow + 1).getFormula());
+        if (Float.valueOf(actualSheet.getImmutableCellAt(startColumn + 1, startRow + 1).getValue().toString()) != 0){
+            sumOverviewDetails.put("planned+",actualSheet.getImmutableCellAt(startColumn + 1, startRow + 1).getFormula());
         } else {
             sumOverviewDetails.remove("planned+");
         }
 
-        if (Float.valueOf(actualSheet.getCellAt(startColumn + 2, startRow).getValue().toString()) != 0){
-            sumOverviewDetails.put("unplanned-",actualSheet.getCellAt(startColumn + 2, startRow).getFormula());
+        if (Float.valueOf(actualSheet.getImmutableCellAt(startColumn + 2, startRow).getValue().toString()) != 0){
+            sumOverviewDetails.put("unplanned-",actualSheet.getImmutableCellAt(startColumn + 2, startRow).getFormula());
         } else {
             sumOverviewDetails.remove("unplanned-");
         }
 
-        if (Float.valueOf(actualSheet.getCellAt(startColumn + 2, startRow + 1).getValue().toString()) != 0){
-            sumOverviewDetails.put("unplanned+",actualSheet.getCellAt(startColumn + 2, startRow + 1).getFormula());
+        if (Float.valueOf(actualSheet.getImmutableCellAt(startColumn + 2, startRow + 1).getValue().toString()) != 0){
+            sumOverviewDetails.put("unplanned+",actualSheet.getImmutableCellAt(startColumn + 2, startRow + 1).getFormula());
         } else {
             sumOverviewDetails.remove("unplanned+");
         }
-
     }
 
     private void generateClosingSumRowValues(Sheet actualSheet, String sumType, String formula) {
@@ -206,7 +257,7 @@ public class JointAccountConverter {
                 for (String cellId : cellIds) {
                     // System.out.println("CellIdToGenerateId: " + cellId);
                     closingSumRowValues.add(new closingSumRowValues(sumType, Integer.valueOf(actualSheet
-                            .getCellAt(19, Integer.valueOf(cellId.substring(1)) - 1)
+                            .getImmutableCellAt(19, Integer.valueOf(cellId.substring(1)) - 1)
                             .getValue().toString())));
                 }
             } else {
@@ -216,7 +267,7 @@ public class JointAccountConverter {
                 for (String cellId : cellIds) {
                     // System.out.println("CellIdToGenerateId: " + cellId);
                     closingSumRowValues.add(new closingSumRowValues(sumType, Integer.valueOf(actualSheet
-                            .getCellAt(19, Integer.valueOf(cellId.substring(1)) - 1)
+                            .getImmutableCellAt(19, Integer.valueOf(cellId.substring(1)) - 1)
                             .getValue().toString())));
                 }
             }
@@ -224,7 +275,7 @@ public class JointAccountConverter {
             String cellId = formula.replaceAll("=|\\[\\.|\\]", "");
             // System.out.println("CellIdToGenerateId: " + cellId);
             closingSumRowValues.add(new closingSumRowValues(sumType, Integer.valueOf(actualSheet
-                        .getCellAt(19, Integer.valueOf(cellId.substring(1)) - 1)
+                        .getImmutableCellAt(19, Integer.valueOf(cellId.substring(1)) - 1)
                         .getValue().toString())));
         }
     }
@@ -238,18 +289,33 @@ public class JointAccountConverter {
         actualSheet.ensureColumnCount(20);
 
         if (actualSheet.getImmutableCellAt(19, 0).getValue().equals("")){
+            // if there getting exists IDValues from alrady readed ods Files
+            // we habe to inkrement it bevore setting its Value
+            // for ods Sheets where they not exists
+
             actualSheet.getCellAt(19, 0).setValue("ID");
             int i = 1;
-            while (!actualSheet.getCellAt(0, i).getValue().equals("Gesamt Ergebnis")) {
+            while (!actualSheet.getImmutableCellAt(0, i).getValue().equals("Gesamt Ergebnis")
+                    && !actualSheet.getImmutableCellAt(0, i).getValue().equals("Summe Ergebnis")) {
                 actualSheet.getCellAt(19, i).setValue(idForClosingDetailTable);
                 idForClosingDetailTable++;
                 i++;
             }
         } else {
             // We assume that only "ID" means that everything is prepared
-            if (!actualSheet.getCellAt("T1").getValue().equals("ID")) {
+            if (!actualSheet.getImmutableCellAt("T1").getValue().equals("ID")) {
                 System.err.println("Fehler... ID Feld in Zelle E1 in Sheet "+ actualSheet.getName() + " kann nicht gesetzt werden, schon ein Wert vorhanden!");
                 System.exit(1);
+            } else {
+                // Whenever an ID is defined, we save it so that we can continue
+                // with a subsequent ID for worksheets for which no ID is defined.
+                for (int i = 1; !actualSheet.getImmutableCellAt(19, i).getValue().toString().isEmpty(); i++) {
+                    idForClosingDetailTable = Integer.valueOf(actualSheet.getImmutableCellAt(19, i).getValue().toString());
+                }
+
+                // we increse the id for the next Sheet if there no one IDs is defines
+                // so we can start to write withe correct next ID Value
+                idForClosingDetailTable++;
             }
         }
 
