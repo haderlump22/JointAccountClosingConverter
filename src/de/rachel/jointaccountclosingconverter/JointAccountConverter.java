@@ -37,13 +37,9 @@ public class JointAccountConverter {
     private int idForClosingDetailTable = 0;
 
     JointAccountConverter() throws IOException {
-        /*
-         * neet to know
-         * getCellAt(column, row) !!!
-         */
-
         File file = new File("Aufstellungen2017.ods");
-        String outputFile = "ha_abschlusssummenImport.txt";
+        String outputFile = "ha_abschlusssummen.txt";
+        String outputFileHaDetails = "ha_abschlussdetails.txt";
         SpreadSheet spreadSheet;
         spreadSheet = SpreadSheet.createFromFile(file);
 
@@ -51,19 +47,18 @@ public class JointAccountConverter {
         for (int i = 0; i < anzahl; i++) {
             if (spreadSheet.getSheet(i).getName().startsWith("Pivot")) {
                 Sheet actualSheet = spreadSheet.getSheet(i);
-                // System.out.println(actualSheet.getName());
+                 System.out.println(actualSheet.getName());
 
                 // create IDs for detailTable and Sum Values Data that need them
-                createIdsForAccountClosingDetails(actualSheet, spreadSheet);
+                createIdsForAccountClosingDetails(actualSheet);
 
                 // block for Creating data for the Accountclosingdetail Table for Import
                 collectDetailTableData(actualSheet);
 
                 // Block for creating closingSum Data for Import
-                findFirstCell(actualSheet);
-                // System.out.println(foundCoordinates);
+                findFirstCellOfSumArea(actualSheet);
                 collectSumOverviewDetails(actualSheet);
-                // System.out.println(sumOverviewDetails);
+
 
                 for (String sumType : sumOverviewDetails.keySet()) {
                     generateClosingSumRowValues(actualSheet, sumType, sumOverviewDetails.get(sumType));
@@ -76,7 +71,6 @@ public class JointAccountConverter {
             };
         }
 
-        // System.out.println(contentBuffer);
         // save all changes
         spreadSheet.saveAs(file);
 
@@ -97,8 +91,10 @@ public class JointAccountConverter {
         // spreadSheet.saveAs(file);
 
     }
+
     private void collectDetailTableData(Sheet actualSheet) {
-        // run reading Information from Cell A1 to E<last Line before in Column A value is "Gesamt ergebnis">
+        // run reading Information from Cell A1 to E<last Line before in Column A value
+        // is "Gesamt ergebnis">
         Integer abschlussDetailId;
         String kategorieBezeichnung;
         Float summeBetraege;
@@ -107,25 +103,27 @@ public class JointAccountConverter {
         String abschlussMonat;
         String bemerkung;
 
-        abschlussMonat = "01." + actualSheet.getName().replaceAll("Pivot-Tabelle_|_\\d{1,2}", "").replace("-", ".")
+        abschlussMonat = "01." + actualSheet.getName().replaceAll("Pivot-Tabelle_|_\\d{1,2}", "").replace("-", ".");
 
-        if (actualSheet.getCellAt("A1").getValue().equals("Art")){
+        if (actualSheet.getCellAt("A1").getValue().equals("Art")) {
             // we start in Row 2 (base that first row has index 0)
             int i = 1;
             while (!actualSheet.getCellAt(0, i).getValue().equals("Gesamt Ergebnis")) {
-                abschlussDetailId = actualSheet.getCellAt(4, i).getValue();
-                kategorieBezeichnung = actualSheet.getCellAt(0, i).getValue();
-                summeBetraege = actualSheet.getCellAt(1 , i).getValue();
-                planBetrag = actualSheet.getCellAt(2, i).getValue();
-                differenz = actualSheet.getCellAt(3, i).getValue();
-                bemerkung = actualSheet.getCellAt(4, i).getValue();
+                abschlussDetailId = Integer.valueOf(actualSheet.getCellAt(19, i).getValue().toString());
+                kategorieBezeichnung = actualSheet.getCellAt(0, i).getValue().toString();
+                summeBetraege = Float.valueOf(actualSheet.getCellAt(1, i).getValue().toString());
+                planBetrag = Float.valueOf(actualSheet.getCellAt(2, i).getValue().toString());
+                differenz = Float.valueOf(actualSheet.getCellAt(3, i).getValue().toString());
+                bemerkung = actualSheet.getCellAt(4, i).getValue().toString();
 
-                closingDetailTableData.add(new closingDetailTableData(null, alphabet, null, null, null, null, alphabet))
+                closingDetailTableData.add(new closingDetailTableData(abschlussDetailId, kategorieBezeichnung,
+                        summeBetraege, planBetrag, differenz, abschlussMonat, bemerkung));
 
                 i++;
             }
         } else {
-            System.err.println("Fehler... ID Feld in Zelle E1 in Sheet "+ actualSheet.getName() + " kann nicht gesetzt werden, schon ein Wert vorhanden!");
+            System.err.println("Fehler... ID Feld in Zelle E1 in Sheet " + actualSheet.getName()
+                    + " kann nicht gesetzt werden, schon ein Wert vorhanden!");
             System.exit(1);
         }
     }
@@ -133,14 +131,17 @@ public class JointAccountConverter {
         new JointAccountConverter();
     }
 
-    private Map<String, Integer> findFirstCell(Sheet actualSheet) {
-        // running fom Column 4 Row 0 to maximum column 7 row 13
+    private Map<String, Integer> findFirstCellOfSumArea(Sheet actualSheet) {
+        // running fom Column 4 Row 0 to maximum column 7 row 30
         // to find the first cell with Value "Summe-",
         // so we can determine where the sumoverview Details are
         Cell<SpreadSheet> actualCell = null;
 
+        // ensure we can work with rows and columns we want
+        actualSheet.ensureRowCount(30);
+
         for (int myColumn = 4; myColumn < 8; myColumn++){
-            for (int myRow = 0; myRow < 14; myRow++){
+            for (int myRow = 0; myRow < 30; myRow++){
                 actualCell = actualSheet.getCellAt(myColumn, myRow);
 
                 if (actualCell.getValue().equals("Summe-")) {
@@ -196,6 +197,7 @@ public class JointAccountConverter {
 
         // first we neet to split the formula that looks like this => "=[.D3]" or like
         // this => "=[.D5]+[.D6]+[.D9]"
+        // or like this => "=SUM([.D6];[.D7];[.D11];[.D13])"
         if (formula.contains("+") || formula.contains("=SUM")) {
             if (formula.startsWith("=SUM")) {
                 String toSplit = formula.replaceAll("=SUM|\\(|\\[|\\.|\\]|\\)", "");
@@ -204,7 +206,7 @@ public class JointAccountConverter {
                 for (String cellId : cellIds) {
                     // System.out.println("CellIdToGenerateId: " + cellId);
                     closingSumRowValues.add(new closingSumRowValues(sumType, Integer.valueOf(actualSheet
-                            .getCellAt(alphabet.indexOf(cellId.charAt(0)) + 1, Integer.valueOf(cellId.substring(1)) - 1)
+                            .getCellAt(19, Integer.valueOf(cellId.substring(1)) - 1)
                             .getValue().toString())));
                 }
             } else {
@@ -214,7 +216,7 @@ public class JointAccountConverter {
                 for (String cellId : cellIds) {
                     // System.out.println("CellIdToGenerateId: " + cellId);
                     closingSumRowValues.add(new closingSumRowValues(sumType, Integer.valueOf(actualSheet
-                            .getCellAt(alphabet.indexOf(cellId.charAt(0)) + 1, Integer.valueOf(cellId.substring(1)) - 1)
+                            .getCellAt(19, Integer.valueOf(cellId.substring(1)) - 1)
                             .getValue().toString())));
                 }
             }
@@ -222,24 +224,30 @@ public class JointAccountConverter {
             String cellId = formula.replaceAll("=|\\[\\.|\\]", "");
             // System.out.println("CellIdToGenerateId: " + cellId);
             closingSumRowValues.add(new closingSumRowValues(sumType, Integer.valueOf(actualSheet
-                        .getCellAt(alphabet.indexOf(cellId.charAt(0)) + 1, Integer.valueOf(cellId.substring(1)) - 1)
+                        .getCellAt(19, Integer.valueOf(cellId.substring(1)) - 1)
                         .getValue().toString())));
         }
     }
 
-    private void createIdsForAccountClosingDetails(Sheet actualSheet, SpreadSheet spreadSheet) {
+    private void createIdsForAccountClosingDetails(Sheet actualSheet) {
         // we start only if there are nothin in E1
-        if (actualSheet.getCellAt("E1").getValue().equals("")){
-            actualSheet.getCellAt("E1").setValue("ID");
+        // and we write the ID at a column that do not interupt the process
+        // anywhere at column T or later
+
+        // ensure we can work with Column until T
+        actualSheet.ensureColumnCount(20);
+
+        if (actualSheet.getImmutableCellAt(19, 0).getValue().equals("")){
+            actualSheet.getCellAt(19, 0).setValue("ID");
             int i = 1;
             while (!actualSheet.getCellAt(0, i).getValue().equals("Gesamt Ergebnis")) {
-                actualSheet.getCellAt(4, i).setValue(idForClosingDetailTable);
+                actualSheet.getCellAt(19, i).setValue(idForClosingDetailTable);
                 idForClosingDetailTable++;
                 i++;
             }
         } else {
             // We assume that only "ID" means that everything is prepared
-            if (!actualSheet.getCellAt("E1").getValue().equals("ID")) {
+            if (!actualSheet.getCellAt("T1").getValue().equals("ID")) {
                 System.err.println("Fehler... ID Feld in Zelle E1 in Sheet "+ actualSheet.getName() + " kann nicht gesetzt werden, schon ein Wert vorhanden!");
                 System.exit(1);
             }
