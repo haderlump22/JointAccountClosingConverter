@@ -47,7 +47,7 @@ public class JointAccountConverter {
             for (int i = 0; i < anzahl; i++) {
                 if (spreadSheet.getSheet(i).getName().startsWith("Pivot")) {
                     Sheet actualSheet = spreadSheet.getSheet(i);
-                    // if (spreadSheet.getSheet(i).getName().startsWith("Pivot-Tabelle_06-2018")) {
+                    // if (spreadSheet.getSheet(i).getName().startsWith("Pivot-Tabelle_05-2023")) {
                     //     System.out.println("Breackpoint");
                     // }
                     System.out.println("processing: " + actualSheet.getName());
@@ -77,11 +77,17 @@ public class JointAccountConverter {
                         contentBufferAbschlusssummen.append("('" + dataRow.sumType + "', "+ dataRow.idOfSummand +"),\n");
                     }
 
+                    // now we clean the list for the Values from the next Sheet
+                    closingSumRowValues.clear();
+
                     System.out.println("...create Closingdetail Import Data");
                     for (closingDetailTableData dataRow : closingDetailTableData) {
                         contentBufferAbschlussDetails.append("(" + dataRow.abschlussDetailId +", '"+ dataRow.kategorieBezeichnung + "', " + dataRow.summeBetraege
                                         + ", " + dataRow.planBetrag + ", " + dataRow.differenz + ", '" + dataRow.abschlussMonat + "'', '" + dataRow.bemerkung + "'),\n");
                     }
+
+                    // now we clean the list for the Values from the next Sheet
+                    closingDetailTableData.clear();
 
                 };
             }
@@ -106,11 +112,11 @@ public class JointAccountConverter {
         // remove all from the last commata to the end of content and write it to Importfile
         System.out.println("...write SumOverview Data to Importfile");
         contentBufferAbschlusssummen = contentBufferAbschlusssummen.delete(contentBufferAbschlusssummen.length() - 2, contentBufferAbschlusssummen.length());
-        Files.writeString(Paths.get(outputFileHaSummen), contentBufferAbschlusssummen, StandardCharsets.UTF_8, StandardOpenOption.WRITE);
+        Files.writeString(Paths.get(outputFileHaSummen), contentBufferAbschlusssummen, StandardCharsets.UTF_8);
 
         System.out.println("...write Closingdetail Data to Importfile");
         contentBufferAbschlussDetails = contentBufferAbschlussDetails.delete(contentBufferAbschlussDetails.length() - 2, contentBufferAbschlussDetails.length());
-        Files.writeString(Paths.get(outputFileHaDetails), contentBufferAbschlussDetails, StandardCharsets.UTF_8, StandardOpenOption.WRITE);
+        Files.writeString(Paths.get(outputFileHaDetails), contentBufferAbschlussDetails, StandardCharsets.UTF_8);
     }
 
     private void collectDetailTableData(Sheet actualSheet) {
@@ -126,7 +132,7 @@ public class JointAccountConverter {
 
         abschlussMonat = "01." + actualSheet.getName().replaceAll("Pivot-Tabelle_|_\\d{1,2}", "").replace("-", ".");
 
-        if (actualSheet.getCellAt("A1").getValue().equals("Art")) {
+        if (actualSheet.getCellAt("A1").getValue().equals("Art") || actualSheet.getCellAt("A1").getValue().equals("Kategorie")) {
             // we start in Row 2 (base that first row has index 0)
             int i = 1;
             while (!actualSheet.getImmutableCellAt(0, i).getValue().equals("Gesamt Ergebnis")
@@ -145,7 +151,7 @@ public class JointAccountConverter {
                     try {
                         planBetrag = Float.valueOf(actualSheet.getImmutableCellAt(2, i).getValue().toString());
                     } catch (NumberFormatException e) {
-                        if (actualSheet.getImmutableCellAt(2, i).getValue().toString().matches("[ a-zA-Z0-9]*")) {
+                        if (actualSheet.getImmutableCellAt(2, i).getValue().toString().matches("[ a-zA-Z0-9\\,üäö]*")) {
                             bemerkung = actualSheet.getImmutableCellAt(2, i).getValue().toString();
                         } else {
                             System.out.println(e.getMessage());
@@ -174,8 +180,8 @@ public class JointAccountConverter {
                 i++;
             }
         } else {
-            System.err.println("Fehler... ID Feld in Zelle E1 in Sheet " + actualSheet.getName()
-                    + " kann nicht gesetzt werden, schon ein Wert vorhanden!");
+            System.err.println("Fehler... die Pivot in " + actualSheet.getName()
+                    + " hat keine Korrekte Feldbezeichungen!");
             System.exit(1);
         }
     }
@@ -304,7 +310,7 @@ public class JointAccountConverter {
         } else {
             // We assume that only "ID" means that everything is prepared
             if (!actualSheet.getImmutableCellAt("T1").getValue().equals("ID")) {
-                System.err.println("Fehler... ID Feld in Zelle E1 in Sheet "+ actualSheet.getName() + " kann nicht gesetzt werden, schon ein Wert vorhanden!");
+                System.err.println("Fehler... ID Feld in Zelle T1 in Sheet "+ actualSheet.getName() + " kann nicht gesetzt werden, schon ein Wert vorhanden!");
                 System.exit(1);
             } else {
                 // Whenever an ID is defined, we save it so that we can continue
