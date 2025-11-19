@@ -193,11 +193,18 @@ public class JointAccountConverter {
                 // so we set it at this point with the Values where we expected the comment
                 // for the detail Value
                 if (bemerkung.isEmpty()) {
-                    bemerkung = actualSheet.getImmutableCellAt(4, i).getValue().toString();
+                    bemerkung = actualSheet.getImmutableCellAt(4, i).getValue().toString().isEmpty() ? "" : actualSheet.getImmutableCellAt(4, i).getValue().toString();
                 }
 
                 closingDetailTableData.add(new closingDetailTableData(abschlussDetailId, kategorieBezeichnung,
                         summeBetraege, planBetrag, differenz, abschlussMonat, bemerkung));
+
+                // reset the Values for the next Row
+                kategorieBezeichnung = "";
+                summeBetraege = 0.0f;
+                planBetrag = 0.0f;
+                differenz = 0.0f;
+                bemerkung = "";
 
                 i++;
             }
