@@ -5,7 +5,6 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Paths;
-import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -26,18 +25,26 @@ public class JointAccountConverter {
             Float summeBetraege, Float planBetrag, Float differenz, String abschlussMonat, String bemerkung) {
     };
 
+    private record closingSumBalanceAllocationValues(Integer partyId, Float percentOfShare, Float valueOfShare,
+            String closingMonth, String postgresTimestampFunction, String closingComment) {
+    };
+
     private List<closingSumRowValues> closingSumRowValues = new ArrayList<>();
     private List<closingDetailTableData> closingDetailTableData = new ArrayList<>();
+    private List<closingSumBalanceAllocationValues> closingSumBalanceAllocationValues = new ArrayList<>();
     // for the Column Position we need when determine from Formula Values
     private StringBuilder contentBufferAbschlusssummen = new StringBuilder();
     private StringBuilder contentBufferAbschlussDetails = new StringBuilder();
+    private StringBuilder contentBufferAbschlussAufteilung = new StringBuilder();
     private int idForClosingDetailTable = 0;
 
     JointAccountConverter() throws IOException {
-        String[] year = {"2017", "2018", "2019", "2020", "2021", "2022", "2023", "2024"};
+        String[] year = {"2017", "2018", "2019", "2020", "2021", "2022", "2023", "2024", "2025"};
         // String[] year = {"2017"};
         String outputFileHaSummen = "ha_abschlusssummen.txt";
         String outputFileHaDetails = "ha_abschlussdetails.txt";
+        String outputFileBalanceAllocationShare = "ha_abschlusssummen_aufteilung.txt";
+        String abschlussMonat;
 
         for (String actualYear : year) {
             File file = new File("Aufstellungen" + actualYear + ".ods");
@@ -52,19 +59,22 @@ public class JointAccountConverter {
                     // }
                     System.out.println("processing: " + actualSheet.getName());
 
+                    // set the current closingMonth
+                    abschlussMonat = "01." + actualSheet.getName().replaceAll("Pivot-Tabelle_|_\\d{1,2}", "").replace("-", ".");
+
                     // create IDs for detailTable and Sum Values Data that need them
                     System.out.println("...create IDs");
                     createIdsForAccountClosingDetails(actualSheet);
 
                     // block for Creating data for the Accountclosingdetail Table for Import
                     System.out.println("...collect Detail Data");
-                    collectDetailTableData(actualSheet);
+                    collectDetailTableData(actualSheet, abschlussMonat);
 
                     // Block for creating closingSum Data for Import
                     System.out.println("...find SumOverview Block");
                     findFirstCellOfSumArea(actualSheet);
                     System.out.println("...collect SumOverview Details");
-                    collectSumOverviewDetails(actualSheet);
+                    collectSumOverviewDetails(actualSheet, abschlussMonat);
 
                     System.out.println("...create SumOverview DataRows");
                     for (String sumType : sumOverviewDetails.keySet()) {
@@ -83,11 +93,20 @@ public class JointAccountConverter {
                     System.out.println("...create Closingdetail Import Data");
                     for (closingDetailTableData dataRow : closingDetailTableData) {
                         contentBufferAbschlussDetails.append("(" + dataRow.abschlussDetailId +", '"+ dataRow.kategorieBezeichnung + "', " + dataRow.summeBetraege
-                                        + ", " + dataRow.planBetrag + ", " + dataRow.differenz + ", '" + dataRow.abschlussMonat + "'', '" + dataRow.bemerkung + "'),\n");
+                                        + ", " + dataRow.planBetrag + ", " + dataRow.differenz + ", '" + dataRow.abschlussMonat + "', '" + dataRow.bemerkung + "'),\n");
                     }
 
                     // now we clean the list for the Values from the next Sheet
                     closingDetailTableData.clear();
+
+                    System.out.println("...create ClosingBalanceAllocation Import Data");
+                    for (closingSumBalanceAllocationValues dataRow : closingSumBalanceAllocationValues) {
+                        contentBufferAbschlussAufteilung.append("(" + dataRow.partyId +", "+ dataRow.percentOfShare + ", " + dataRow.valueOfShare
+                                        + ", '" + dataRow.closingMonth + "', " + dataRow.postgresTimestampFunction + ", '" + dataRow.closingComment + "'),\n");
+                    }
+
+                    // now we clean the list for the Values from the next Sheet
+                    closingSumBalanceAllocationValues.clear();
 
                 };
             }
@@ -111,15 +130,19 @@ public class JointAccountConverter {
 
         // remove all from the last commata to the end of content and write it to Importfile
         System.out.println("...write SumOverview Data to Importfile");
-        contentBufferAbschlusssummen = contentBufferAbschlusssummen.delete(contentBufferAbschlusssummen.length() - 2, contentBufferAbschlusssummen.length());
+        contentBufferAbschlusssummen.delete(contentBufferAbschlusssummen.length() - 2, contentBufferAbschlusssummen.length());
         Files.writeString(Paths.get(outputFileHaSummen), contentBufferAbschlusssummen, StandardCharsets.UTF_8);
 
         System.out.println("...write Closingdetail Data to Importfile");
-        contentBufferAbschlussDetails = contentBufferAbschlussDetails.delete(contentBufferAbschlussDetails.length() - 2, contentBufferAbschlussDetails.length());
+        contentBufferAbschlussDetails.delete(contentBufferAbschlussDetails.length() - 2, contentBufferAbschlussDetails.length());
         Files.writeString(Paths.get(outputFileHaDetails), contentBufferAbschlussDetails, StandardCharsets.UTF_8);
+
+        System.out.println("...write BalanceAllocation Data to Importfile");
+        contentBufferAbschlussAufteilung.delete(contentBufferAbschlussAufteilung.length() - 2, contentBufferAbschlussAufteilung.length());
+        Files.writeString(Paths.get(outputFileBalanceAllocationShare), contentBufferAbschlussAufteilung, StandardCharsets.UTF_8);
     }
 
-    private void collectDetailTableData(Sheet actualSheet) {
+    private void collectDetailTableData(Sheet actualSheet, String abschlussMonat) {
         // run reading Information from Cell A1 to E<last Line before in Column A value
         // is "Gesamt ergebnis">
         Integer abschlussDetailId;
@@ -127,10 +150,9 @@ public class JointAccountConverter {
         Float summeBetraege = 0.0f;
         Float planBetrag = 0.0f;
         Float differenz = 0.0f;
-        String abschlussMonat;
         String bemerkung = "";
 
-        abschlussMonat = "01." + actualSheet.getName().replaceAll("Pivot-Tabelle_|_\\d{1,2}", "").replace("-", ".");
+
 
         if (actualSheet.getCellAt("A1").getValue().equals("Art") || actualSheet.getCellAt("A1").getValue().equals("Kategorie")) {
             // we start in Row 2 (base that first row has index 0)
@@ -211,7 +233,8 @@ public class JointAccountConverter {
         return foundCoordinates;
     }
 
-    private void collectSumOverviewDetails(Sheet actualSheet) {
+    private void collectSumOverviewDetails(Sheet actualSheet, String abschlussMonat) {
+        StringBuilder comment = new StringBuilder();
 
         /// so is our Spread to read, and we start at coordinates where the value "sum-"
         /// is present
@@ -248,6 +271,47 @@ public class JointAccountConverter {
         } else {
             sumOverviewDetails.remove("unplanned+");
         }
+
+        /**
+         * And with this coordinates we can collect at this Moment the
+         * Balance Allocation Shares of this Month
+         * after all 4 lines maybe comments
+         */
+        /// |       |        | 54,65%  | 45,35%  | comment?
+        /// |-------|--------|---------|---------|
+        /// |geplant| 117,40 | 64,16   | 53,24   | comment?
+        /// |zusaetz| -351,80| -192,26 | -159,54 | comment?
+        ///                  |---------|---------|
+        ///                  |-128,10  |-106,30  | comment?
+
+        // we collect all theoretical 4 comments
+        for (int i = 0; i < 4; i++) {
+            if (!actualSheet.getImmutableCellAt(startColumn + 4, startRow + (i+4)).getValue().toString().isEmpty()) {
+                comment.append(actualSheet.getImmutableCellAt(startColumn + 4, startRow + (i+4)).getValue().toString() + "\n");
+            }
+        }
+
+        // delete the last newline if there content exist
+        if (comment.length() > 0) comment.delete(comment.length() - 1, comment.length());
+
+
+        // for the first Person => in every Overviews ever me
+        closingSumBalanceAllocationValues.add(new closingSumBalanceAllocationValues(
+            2,
+            Float.valueOf(actualSheet.getImmutableCellAt(startColumn + 2, startRow + 4).getValue().toString()),
+            Float.valueOf(actualSheet.getImmutableCellAt(startColumn + 2, startRow + 7).getValue().toString()),
+            abschlussMonat,
+            "CURRENT_TIMESTAMP",
+            "importiert von den ODS Tabellen zum Zeitpunkt" + (comment.length() > 0 ? "\n" : "") + comment));
+
+        // and now for the second Person => in every Overviews my darling
+        closingSumBalanceAllocationValues.add(new closingSumBalanceAllocationValues(
+            6,
+            Float.valueOf(actualSheet.getImmutableCellAt(startColumn + 3, startRow + 4).getValue().toString()),
+            Float.valueOf(actualSheet.getImmutableCellAt(startColumn + 3, startRow + 7).getValue().toString()),
+            abschlussMonat,
+            "CURRENT_TIMESTAMP",
+            "importiert von den ODS Tabellen zum Zeitpunkt" + (comment.length() > 0 ? "\n" : "") + comment));
     }
 
     private void generateClosingSumRowValues(Sheet actualSheet, String sumType, String formula) {
