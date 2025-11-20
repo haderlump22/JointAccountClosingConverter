@@ -5,6 +5,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Paths;
+import java.util.AbstractMap;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -29,14 +30,23 @@ public class JointAccountConverter {
             String closingMonth, String postgresTimestampFunction, String closingComment) {
     };
 
+    private record Transaktionen(String soll_haben, Integer konten_id, String datum, Double betrag, String buchtext,
+            Integer ereigniss_id, String liqui_monat) {
+    }
+
     private List<closingSumRowValues> closingSumRowValues = new ArrayList<>();
     private List<closingDetailTableData> closingDetailTableData = new ArrayList<>();
     private List<closingSumBalanceAllocationValues> closingSumBalanceAllocationValues = new ArrayList<>();
+    private List<Transaktionen> transaktionen = new ArrayList<>();
     // for the Column Position we need when determine from Formula Values
     private StringBuilder contentBufferAbschlusssummen = new StringBuilder();
     private StringBuilder contentBufferAbschlussDetails = new StringBuilder();
     private StringBuilder contentBufferAbschlussAufteilung = new StringBuilder();
+    private StringBuilder contentTransaktionen = new StringBuilder();
+    private StringBuilder notFoundEreignisse = new StringBuilder();
     private int idForClosingDetailTable = 0;
+
+    Map<String, String> map = createEreignisMap();
 
     JointAccountConverter() throws IOException {
         String[] year = {"2017", "2018", "2019", "2020", "2021", "2022", "2023", "2024", "2025"};
@@ -44,6 +54,7 @@ public class JointAccountConverter {
         String outputFileHaSummen = "ha_abschlusssummen.txt";
         String outputFileHaDetails = "ha_abschlussdetails.txt";
         String outputFileBalanceAllocationShare = "ha_abschlusssummen_aufteilung.txt";
+        String outputFileTransaktionen = "transaktionen.txt";
         String abschlussMonat;
 
         for (String actualYear : year) {
@@ -52,6 +63,7 @@ public class JointAccountConverter {
 
             int anzahl = spreadSheet.getSheetCount();
             for (int i = 0; i < anzahl; i++) {
+
                 if (spreadSheet.getSheet(i).getName().startsWith("Pivot")) {
                     Sheet actualSheet = spreadSheet.getSheet(i);
                     // if (spreadSheet.getSheet(i).getName().startsWith("Pivot-Tabelle_05-2023")) {
@@ -108,24 +120,34 @@ public class JointAccountConverter {
                     // now we clean the list for the Values from the next Sheet
                     closingSumBalanceAllocationValues.clear();
 
-                };
+                }
+
+                if (spreadSheet.getSheet(i).getName().matches("\\d\\d-\\d\\d\\d\\d")) {
+                    Sheet actualSheet = spreadSheet.getSheet(i);
+                    // set the current closingMonth
+                    abschlussMonat = "01." + actualSheet.getName().replace("-", ".");
+
+                    System.out.println("processing: " + actualSheet.getName());
+
+                    // block for Creating data for the Accountclosingdetail Table for Import
+                    System.out.println("...collect Detail Data");
+                    collectTransaktionData(actualSheet, abschlussMonat);
+
+                    System.out.println("...create ClosingBalanceAllocation Import Data");
+                    for (Transaktionen dataRow : transaktionen) {
+                        contentTransaktionen.append("('" + dataRow.soll_haben +"', "+ dataRow.konten_id + ", '" + dataRow.datum
+                                        + "', " + dataRow.betrag + ", '" + dataRow.buchtext + "', " + dataRow.ereigniss_id + ", '" + dataRow.liqui_monat +"'),\n");
+                    }
+
+                    // now we clean the list for the Values from the next Sheet
+                    transaktionen.clear();
+                }
             }
 
             // save all changes
             System.out.println("...save change ods File");
             spreadSheet.saveAs(file);
             System.out.println("LetzteID für die Summen des Jahres (" + actualYear + "): " + idForClosingDetailTable);
-
-
-
-            // Sheet actualSheet = spreadSheet.getSheet(3);
-            // if (!actualSheet.getCellAt("E1").getValue().equals("")){
-            //     System.out.println("nich leer");
-            // } else {
-            //     System.out.println("leer");
-            // }
-
-            // spreadSheet.saveAs(file);
         }
 
         // remove all from the last commata to the end of content and write it to Importfile
@@ -140,6 +162,13 @@ public class JointAccountConverter {
         System.out.println("...write BalanceAllocation Data to Importfile");
         contentBufferAbschlussAufteilung.delete(contentBufferAbschlussAufteilung.length() - 2, contentBufferAbschlussAufteilung.length());
         Files.writeString(Paths.get(outputFileBalanceAllocationShare), contentBufferAbschlussAufteilung, StandardCharsets.UTF_8);
+
+        // to copy not founded Entrys for happenings in the db
+        System.out.println(notFoundEreignisse);
+
+        System.out.println("...write Transaktions Data to Importfile");
+        contentTransaktionen.delete(contentTransaktionen.length() - 2, contentTransaktionen.length());
+        Files.writeString(Paths.get(outputFileTransaktionen), contentTransaktionen, StandardCharsets.UTF_8);
     }
 
     private void collectDetailTableData(Sheet actualSheet, String abschlussMonat) {
@@ -396,5 +425,52 @@ public class JointAccountConverter {
             }
         }
 
+    }
+
+    private void collectTransaktionData(Sheet actualSheet, String abschlussMonat) {
+        int row = 1; // here we start
+        do {
+            // check if the buchtext is not over 500 characters long
+            if ((actualSheet.getImmutableCellAt(4, row).getValue().toString() + "("
+                            + actualSheet.getImmutableCellAt(5, row).getValue().toString() + ")").length() > 500){
+                                System.out.println("Achtung! Buchungstext passt nicht in das DB feld!!!");
+                                System.exit(0);
+            }
+
+            // single quotes has to replace with double single quote because we import this to an postgres DB
+            transaktionen.add(new Transaktionen(
+                    (Double.valueOf(actualSheet.getImmutableCellAt(8, row).getValue().toString()) < 0 ? "s" : "h"),
+                    13,
+                    actualSheet.getImmutableCellAt(2, row).getValue().toString(),
+                    Double.valueOf(actualSheet.getImmutableCellAt(8, row).getValue().toString()) < 0
+                        ? Double.valueOf(actualSheet.getImmutableCellAt(8, row).getValue().toString()) * -1
+                        : Double.valueOf(actualSheet.getImmutableCellAt(8, row).getValue().toString()),
+                    (actualSheet.getImmutableCellAt(4, row).getValue().toString() + "("
+                    + actualSheet.getImmutableCellAt(5, row).getValue().toString() + ")").replaceAll("'", "\\'\\'"),
+                    getEreignisId(actualSheet.getImmutableCellAt(11, row).getValue().toString()),
+                    abschlussMonat));
+            row++;
+            actualSheet.ensureRowCount(row + 1);
+        } while (!(actualSheet.getImmutableCellAt(0, row).getValue().toString().isEmpty()));
+
+    }
+
+    private Integer getEreignisId(String bezeichnung) {
+        if (map.get(bezeichnung) != null) {
+            return Integer.valueOf(map.get(bezeichnung));
+        } else {
+            System.out.println("Eintrag: -" + bezeichnung + "- nicht bekannt");
+            notFoundEreignisse.append(bezeichnung + "'),('");
+            return 0;
+        }
+    }
+
+    private Map<String, String> createEreignisMap() {
+        return  Map.ofEntries(
+            new AbstractMap.SimpleEntry<String, String>("happening1","0"),
+            new AbstractMap.SimpleEntry<String, String>("happening2","1"),
+            new AbstractMap.SimpleEntry<String, String>("happening3","2"),
+            new AbstractMap.SimpleEntry<String, String>("happening4","3")
+            );
     }
 }
